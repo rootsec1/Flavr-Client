@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  xmlns:tools="http://schemas.android.com/tools"
+  android:id="@+id/mainRelativeLayout"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  tools:context=".Activities.MainActivity">
+
+  <android.support.v4.widget.SwipeRefreshLayout
+    android:id="@+id/mainSwipeRefreshLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <android.support.v7.widget.RecyclerView
+      android:id="@+id/mainRecyclerView"
+      android:scrollbars="vertical"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
+
+    </android.support.v7.widget.RecyclerView>
+  </android.support.v4.widget.SwipeRefreshLayout>
+
+  <android.support.design.widget.FloatingActionButton
+    android:id="@+id/checkoutButton"
+    android:src="@drawable/baseline_navigate_next_white_24"
+    android:clickable="true"
+    android:focusable="true"
+    app:rippleColor="@color/colorPrimary"
+    app:elevation="12dp"
+    app:fabSize="normal"
+    android:layout_margin="20dp"
+    android:layout_alignParentEnd="true"
+    android:layout_alignParentBottom="true"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"/>
+
+</RelativeLayout>
