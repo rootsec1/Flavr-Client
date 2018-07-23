@@ -26,7 +26,7 @@ public class FoodItemsRecyclerViewAdapter extends RecyclerView.Adapter<FoodItems
   private ArrayList<Food> foodArrayList;
   private String currencyCode;
 
-  FoodItemsRecyclerViewAdapter(Context context, ArrayList<Food> foodArrayList) {
+  public FoodItemsRecyclerViewAdapter(Context context, ArrayList<Food> foodArrayList) {
     this.context = context;
     this.foodArrayList = foodArrayList;
     Currency currency = Currency.getInstance(Locale.getDefault());

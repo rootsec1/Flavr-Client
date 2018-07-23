@@ -59,5 +59,9 @@ dependencies {
     implementation 'de.hdodenhof:circleimageview:2.2.0'
     //Google Pay
     implementation 'com.google.android.gms:play-services-wallet:15.0.1'
+    //PayTm
+    implementation 'com.paytm:pgplussdk:1.1.5'
+    //Stripe
+    implementation 'com.stripe:stripe-android:6.1.2'
 }
 apply plugin: 'com.google.gms.google-services'

@@ -2,6 +2,7 @@
 <!DOCTYPE resources [
   <!ENTITY appname "Flavr">
   <!ENTITY google_web_client_id "828880926318-mmbn10ilmj1fp9drpu1b1hg35k78evln.apps.googleusercontent.com">
+  <!ENTITY base_url "http://192.168.2.5:">
   ]>
 
 <resources>
@@ -9,7 +10,8 @@
   <string name="app_name_logo">&appname;.</string>
   <string name="sign_in">Sign In</string>
   <string name="google_sign_in_client_id">&google_web_client_id;</string>
-  <string name="base_server_url">http://192.168.2.6:8000/api/v1/</string>
+  <string name="base_server_url">&base_url;8000/api/v1/</string>
+  <string name="paytm_url">&base_url;3000/</string>
 
   <string-array name="categories">
     <item>Starters</item>

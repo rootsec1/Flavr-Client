@@ -67,7 +67,7 @@ public class SplashActivity extends AppCompatActivity {
         @Override
         public void onResponse(@NonNull Call<User> call, @NonNull Response<User> response) {
           if (response.body()==null) signInUser();
-          else moveToNextActivity();
+          else moveToNextActivity(response.body());
         }
 
         @Override
@@ -123,7 +123,7 @@ public class SplashActivity extends AppCompatActivity {
       @Override
       public void onResponse(@NonNull Call<User> call, @NonNull Response<User> response) {
         if (response.body()==null) signUpUser(result);
-        else moveToNextActivity();
+        else moveToNextActivity(response.body());
       }
 
       @Override
@@ -165,7 +165,7 @@ public class SplashActivity extends AppCompatActivity {
         if (response.body()==null) {
           Objects.requireNonNull(firebaseAuth.getCurrentUser()).delete().addOnSuccessListener(aVoid -> promptUser("There has been an error signing you up. Please try again."));
         }
-        else moveToNextActivity();
+        else moveToNextActivity(response.body());
       }
 
       @Override
@@ -175,8 +175,10 @@ public class SplashActivity extends AppCompatActivity {
     });
   }
 
-  private void moveToNextActivity() {
-    startActivity(new Intent(SplashActivity.this, MainActivity.class));
+  private void moveToNextActivity(User body) {
+    Intent nextActivityIntent = new Intent(SplashActivity.this, MainActivity.class);
+    nextActivityIntent.putExtra("USER", body);
+    startActivity(nextActivityIntent);
     finish();
   }
 

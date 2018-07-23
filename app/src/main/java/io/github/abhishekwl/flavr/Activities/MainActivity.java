@@ -1,7 +1,6 @@
 package io.github.abhishekwl.flavr.Activities;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -13,6 +12,7 @@ import android.support.v7.widget.DefaultItemAnimator;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.view.Menu;
+import android.view.MenuItem;
 import butterknife.BindColor;
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -25,27 +25,24 @@ import com.google.android.gms.nearby.messages.Message;
 import com.google.android.gms.nearby.messages.MessageListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.wallet.AutoResolveHelper;
-import com.google.android.gms.wallet.CardRequirements;
-import com.google.android.gms.wallet.IsReadyToPayRequest;
+import com.google.android.gms.wallet.CardInfo;
 import com.google.android.gms.wallet.PaymentData;
 import com.google.android.gms.wallet.PaymentDataRequest;
-import com.google.android.gms.wallet.PaymentMethodTokenizationParameters;
 import com.google.android.gms.wallet.PaymentsClient;
 import com.google.android.gms.wallet.TransactionInfo;
-import com.google.android.gms.wallet.Wallet;
-import com.google.android.gms.wallet.WalletConstants;
 import com.google.firebase.auth.FirebaseAuth;
+import com.stripe.android.model.Token;
 import io.github.abhishekwl.flavr.Adapters.CategoriesRecyclerViewAdapter;
 import io.github.abhishekwl.flavr.Helpers.ApiClient;
 import io.github.abhishekwl.flavr.Helpers.ApiInterface;
 import io.github.abhishekwl.flavr.Models.Category;
+import io.github.abhishekwl.flavr.Models.Constants;
 import io.github.abhishekwl.flavr.Models.Food;
 import io.github.abhishekwl.flavr.Models.Hotel;
+import io.github.abhishekwl.flavr.Models.PaymentsUtil;
+import io.github.abhishekwl.flavr.Models.User;
 import io.github.abhishekwl.flavr.R;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Currency;
-import java.util.Locale;
 import java.util.Objects;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -59,8 +56,8 @@ public class MainActivity extends AppCompatActivity {
   @BindColor(R.color.colorPrimary) int colorPrimary;
   @BindColor(R.color.colorTextDark) int colorPrimaryDark;
 
+  private static final int GOOGLE_PAY_RC_CODE = 908;
   private Unbinder unbinder;
-  private static final int LOAD_PAYMENT_DATA_REQUEST_CODE = 979;
   private FirebaseAuth firebaseAuth;
   private ApiInterface apiInterface;
   private MessageListener messageListener;
@@ -68,8 +65,9 @@ public class MainActivity extends AppCompatActivity {
   private ArrayList<Category> categoryArrayList = new ArrayList<>();
   private ArrayList<Food> allFoodItems = new ArrayList<>();
   private CategoriesRecyclerViewAdapter categoriesRecyclerViewAdapter;
-  private PaymentsClient paymentsClient;
   private String deviceCurrency;
+  private PaymentsClient paymentsClient;
+  private User currentUser;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -83,10 +81,9 @@ public class MainActivity extends AppCompatActivity {
   private void initializeComponents() {
     mainSwipeRefreshLayout.setColorSchemeColors(colorAccent, colorPrimary, colorPrimaryDark);
     mainSwipeRefreshLayout.setRefreshing(true);
+    currentUser = getIntent().getParcelableExtra("USER");
     firebaseAuth = FirebaseAuth.getInstance();
     apiInterface = ApiClient.getRetrofit(getApplicationContext()).create(ApiInterface.class);
-    paymentsClient = Wallet.getPaymentsClient(MainActivity.this, new Wallet.WalletOptions.Builder().setEnvironment(
-        WalletConstants.ENVIRONMENT_TEST).build());
     messageListener = new MessageListener(){
       @Override
       public void onFound(Message message) {
@@ -100,8 +97,7 @@ public class MainActivity extends AppCompatActivity {
         identifyHotel(message);
       }
     };
-    Currency currency = Currency.getInstance(Locale.getDefault());
-    deviceCurrency = currency.getCurrencyCode();
+    deviceCurrency = Constants.CURRENCY_CODE;
     identifyHotel(new Message("5b4779df0d8f281cf0f7bee8:bGxNp1kQ2UhNM0kpCevP3muvT2h2".getBytes())); //Remove in production
   }
 
@@ -156,7 +152,6 @@ public class MainActivity extends AppCompatActivity {
           }
         });
   }
-
   private class SortFoodArrayListIntoCategories extends AsyncTask<ArrayList<Food>, Void, ArrayList<Category>> {
 
     @Override
@@ -186,6 +181,22 @@ public class MainActivity extends AppCompatActivity {
     mainSwipeRefreshLayout.setRefreshing(true);
     initializeRecyclerView();
     mainSwipeRefreshLayout.setOnRefreshListener(this::fetchFoodItems);
+    checkIfGooglePayIsAvailable();
+  }
+
+  private void checkIfGooglePayIsAvailable() {
+    paymentsClient = PaymentsUtil.createPaymentsClient(MainActivity.this);
+    PaymentsUtil.isReadyToPay(paymentsClient).addOnCompleteListener(
+        task -> {
+          try {
+            boolean result = task.getResult(ApiException.class);
+            if (!result) {
+              notifyMessage("Google pay isn't available on your device. You won't be able to order without Google Pay :(");
+            }
+          } catch (ApiException exception) {
+            notifyMessage(exception.getMessage());
+          }
+        });
   }
 
   private void initializeRecyclerView() {
@@ -194,6 +205,46 @@ public class MainActivity extends AppCompatActivity {
     mainRecyclerView.setHasFixedSize(true);
     categoriesRecyclerViewAdapter = new CategoriesRecyclerViewAdapter(getApplicationContext(), categoryArrayList);
     mainRecyclerView.setAdapter(categoriesRecyclerViewAdapter);
+  }
+
+  private void checkout(double transactionAmount) {
+    String finalPriceInString = PaymentsUtil.microsToString((long) transactionAmount);
+    TransactionInfo transactionInfo = PaymentsUtil.createTransaction(finalPriceInString);
+    PaymentDataRequest paymentDataRequest = PaymentsUtil.createPaymentDataRequest(transactionInfo);
+    Task<PaymentData> futurePaymentData = paymentsClient.loadPaymentData(paymentDataRequest);
+    AutoResolveHelper.resolveTask(futurePaymentData, MainActivity.this, GOOGLE_PAY_RC_CODE);
+  }
+
+  @Override
+  protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    switch (requestCode) {
+      case GOOGLE_PAY_RC_CODE:
+        switch (resultCode) {
+          case RESULT_OK:
+            PaymentData paymentData = PaymentData.getFromIntent(data);
+            handlePaymentSuccess(Objects.requireNonNull(paymentData));
+            break;
+          case RESULT_CANCELED:
+            notifyMessage("Operation cancelled by the user.");
+            break;
+          case AutoResolveHelper.RESULT_ERROR:
+            Status status = AutoResolveHelper.getStatusFromIntent(data);
+            notifyMessage(Objects.requireNonNull(status).getStatusMessage());
+        }
+    }
+  }
+
+  private void handlePaymentSuccess(PaymentData paymentData) {
+    String rawToken = Objects.requireNonNull(paymentData.getPaymentMethodToken()).getToken();
+    CardInfo cardInfo = paymentData.getCardInfo();
+    Token stripeToken = Token.fromString(rawToken);
+    if (stripeToken!=null) performNetworkRequest(stripeToken.getId());
+    notifyMessage("Payment successful :)\nWe'll notify you once your dish is done.");
+  }
+
+  private void performNetworkRequest(String id) {
+    //TODO: Perform network request
   }
 
   private void notifyMessage(String message) {
@@ -225,71 +276,47 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPostExecute(ArrayList<Food> foodArrayList) {
       super.onPostExecute(foodArrayList);
-      checkout(foodArrayList, grandTotal);
+      checkout(grandTotal);
     }
   }
 
-  private void checkout(ArrayList<Food> foodArrayList, double grandTotal) {
-    IsReadyToPayRequest request =
-        IsReadyToPayRequest.newBuilder()
-            .addAllowedPaymentMethod(WalletConstants.PAYMENT_METHOD_CARD)
-            .addAllowedPaymentMethod(WalletConstants.PAYMENT_METHOD_TOKENIZED_CARD)
-            .build();
-    Task<Boolean> task = paymentsClient.isReadyToPay(request);
-    task.addOnCompleteListener(
-        task1 -> {
-          try {
-            boolean result = task1.getResult(ApiException.class);
-            if (result) {
-              PaymentDataRequest paymentDataRequest = createPaymentDataRequest(grandTotal);
-              AutoResolveHelper.resolveTask(paymentsClient.loadPaymentData(paymentDataRequest), MainActivity.this, LOAD_PAYMENT_DATA_REQUEST_CODE);
-            } else {
-              notifyMessage("Google Pay isn't supported on your phone :(");
-              //TODO: Tez API
-            }
-          } catch (ApiException exception) {
-            notifyMessage(exception.getMessage());
-          }
-        });
-  }
+  private class RetrieveFoodItemsForCart extends AsyncTask<ArrayList<Food>, Void, ArrayList<Food>> {
 
+    @Override
+    protected ArrayList<Food> doInBackground(ArrayList<Food>... arrayLists) {
+      ArrayList<Food> selectedFoods = new ArrayList<>();
+      for (Food food: arrayLists[0]) if (food.isFoodSelcted()) selectedFoods.add(food);
+      return selectedFoods;
+    }
 
-  private PaymentDataRequest createPaymentDataRequest(double grandTotal) {
-    PaymentDataRequest.Builder request =
-        PaymentDataRequest.newBuilder()
-            .setTransactionInfo(
-                TransactionInfo.newBuilder()
-                    .setTotalPriceStatus(WalletConstants.TOTAL_PRICE_STATUS_FINAL)
-                    .setTotalPrice(Double.toString(grandTotal))
-                    .setCurrencyCode(deviceCurrency)
-                    .build())
-            .addAllowedPaymentMethod(WalletConstants.PAYMENT_METHOD_CARD)
-            .addAllowedPaymentMethod(WalletConstants.PAYMENT_METHOD_TOKENIZED_CARD)
-            .setCardRequirements(
-                CardRequirements.newBuilder()
-                    .addAllowedCardNetworks(
-                        Arrays.asList(
-                            WalletConstants.CARD_NETWORK_AMEX,
-                            WalletConstants.CARD_NETWORK_DISCOVER,
-                            WalletConstants.CARD_NETWORK_VISA,
-                            WalletConstants.CARD_NETWORK_MASTERCARD))
-                    .build());
-
-    PaymentMethodTokenizationParameters params = PaymentMethodTokenizationParameters.newBuilder()
-            .setPaymentMethodTokenizationType(
-                WalletConstants.PAYMENT_METHOD_TOKENIZATION_TYPE_PAYMENT_GATEWAY)
-            .addParameter("gateway", "example")
-            .addParameter("gatewayMerchantId", "exampleGatewayMerchantId")
-            .build();
-
-    request.setPaymentMethodTokenizationParameters(params);
-    return request.build();
+    @Override
+    protected void onPostExecute(ArrayList<Food> foodArrayListSelected) {
+      super.onPostExecute(foodArrayListSelected);
+      if (foodArrayListSelected.isEmpty()) notifyMessage("Your cart is currently empty.");
+      else {
+        Intent cartIntent = new Intent(MainActivity.this, CartActivity.class);
+        cartIntent.putExtra("FOOD_CHECKOUT", foodArrayListSelected);
+        startActivity(cartIntent);
+      }
+    }
   }
 
   @Override
   public boolean onCreateOptionsMenu(Menu menu) {
     getMenuInflater().inflate(R.menu.main_menu, menu);
     return true;
+  }
+
+  @SuppressWarnings("unchecked")
+  @Override
+  public boolean onOptionsItemSelected(MenuItem item) {
+    switch (item.getItemId()) {
+      case R.id.menuItemCart:
+        new RetrieveFoodItemsForCart().execute(allFoodItems);
+        break;
+
+    }
+    return super.onOptionsItemSelected(item);
   }
 
   @Override
@@ -308,31 +335,5 @@ public class MainActivity extends AppCompatActivity {
   protected void onDestroy() {
     unbinder.unbind();
     super.onDestroy();
-  }
-
-  @Override
-  public void onActivityResult(int requestCode, int resultCode, Intent data) {
-    switch (requestCode) {
-      case LOAD_PAYMENT_DATA_REQUEST_CODE:
-        switch (resultCode) {
-          case Activity.RESULT_OK:
-            PaymentData paymentData = PaymentData.getFromIntent(data);
-            String token = paymentData.getPaymentMethodToken().getToken();
-            break;
-          case Activity.RESULT_CANCELED:
-            break;
-          case AutoResolveHelper.RESULT_ERROR:
-            Status status = AutoResolveHelper.getStatusFromIntent(data);
-            // Log the status for debugging.
-            // Generally, there is no need to show an error to
-            // the user as the Google Pay API will do that.
-            break;
-          default:
-            // Do nothing.
-        }
-        break;
-      default:
-        // Do nothing.
-    }
   }
 }
